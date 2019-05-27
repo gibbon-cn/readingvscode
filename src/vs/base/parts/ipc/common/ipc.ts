@@ -17,6 +17,7 @@ import { VSBuffer } from 'vs/base/common/buffer';
  * most one single argument. A `call` always returns a promise
  * with at most one single return value.
  */
+///IChannel是命令集合的抽象。可以对一个通道`call`多个命令，每个命令至多接受一个参数。`call`总是返回一个promise，带有至多一个返回值。
 export interface IChannel {
 	call<T>(command: string, arg?: any, cancellationToken?: CancellationToken): Promise<T>;
 	listen<T>(event: string, arg?: any): Event<T>;
@@ -27,12 +28,16 @@ export interface IChannel {
  * on the server-side. You should implement this interface
  * if you'd like to handle remote promises or events.
  */
+/// IServerChannel对应于服务端的IChannel。如果你希望处理远程promise或事件，你应当实现这个接口
+/// 服务端通道以两种形式提供服务
+/// 1. 对外部的promise请求，以call执行数据，返回数据结果。（由ChannelServer负责将响应消息发送给外部）
+/// 2. 对外部的事件监听请求，以listen对外暴露事件注册，当发送事件时，触发监听。（由ChannelServer负责将响应消息发送给外部）
 export interface IServerChannel<TContext = string> {
 	call<T>(ctx: TContext, command: string, arg?: any, cancellationToken?: CancellationToken): Promise<T>;
 	listen<T>(ctx: TContext, event: string, arg?: any): Event<T>;
 }
 
-
+/// 请求类型：Promise，EventListen
 export const enum RequestType {
 	Promise = 100,
 	PromiseCancel = 101,
@@ -46,6 +51,7 @@ type IRawEventListenRequest = { type: RequestType.EventListen; id: number; chann
 type IRawEventDisposeRequest = { type: RequestType.EventDispose, id: number };
 type IRawRequest = IRawPromiseRequest | IRawPromiseCancelRequest | IRawEventListenRequest | IRawEventDisposeRequest;
 
+/// 响应类型，初始、Promise相关、触发事件
 export const enum ResponseType {
 	Initialize = 200,
 	PromiseSuccess = 201,
@@ -65,6 +71,7 @@ interface IHandler {
 	(response: IRawResponse): void;
 }
 
+/// 消息传递协议，可以发送VSBuffer，可以注册监听器，监听器处理传出的VSBuffer
 export interface IMessagePassingProtocol {
 	send(buffer: VSBuffer): void;
 	onMessage: Event<VSBuffer>;
@@ -79,6 +86,7 @@ enum State {
  * An `IChannelServer` hosts a collection of channels. You are
  * able to register channels onto it, provided a channel name.
  */
+/// IChannelServer是channel集合的宿主，你可以通过提供一个通道名称而注册一个通道。
 export interface IChannelServer<TContext = string> {
 	registerChannel(channelName: string, channel: IServerChannel<TContext>): void;
 }
@@ -87,10 +95,12 @@ export interface IChannelServer<TContext = string> {
  * An `IChannelClient` has access to a collection of channels. You
  * are able to get those channels, given their channel name.
  */
+/// IChannelClient能够访问channle集合，通过channel名称而获得通道
 export interface IChannelClient {
 	getChannel<T extends IChannel>(channelName: string): T;
 }
 
+/// 具有TContext作为上下文的客户端
 export interface Client<TContext> {
 	readonly ctx: TContext;
 }
@@ -105,6 +115,7 @@ export interface IConnectionHub<TContext> {
  * channels, in scenarios in which there are multiple possible
  * channels (each from a separate client) to pick from.
  */
+/// IClientRouter负责将call路由到特定的通道，场景是有多个可能的通道去选择（每个通道来自一个单独的客户端）
 export interface IClientRouter<TContext = string> {
 	routeCall(hub: IConnectionHub<TContext>, command: string, arg?: any, cancellationToken?: CancellationToken): Promise<Client<TContext>>;
 	routeEvent(hub: IConnectionHub<TContext>, event: string, arg?: any): Promise<Client<TContext>>;
@@ -117,6 +128,8 @@ export interface IClientRouter<TContext = string> {
  * the same channel. You'll need to pass in an `IClientRouter` in
  * order to pick the right one.
  */
+/// IRoutingChannelClient与IChannelClient相似，不同之处在于IRoutingChannelClient有多个客户端提供相同的通道，所以需要通过IClientRouter
+/// 来找到正确的客户端
 export interface IRoutingChannelClient<TContext = string> {
 	getChannel<T extends IChannel>(channelName: string, router: IClientRouter<TContext>): T;
 }
@@ -246,9 +259,14 @@ function deserialize(reader: IReader): any {
 	}
 }
 
+/// 通道服务器，是一组通道的宿主，以通讯协议protocol构造
+/// 以onRawMessage监听protocol的onMessage
+/// 对外暴漏registerChannel，以channelName标识channel
 export class ChannelServer<TContext = string> implements IChannelServer<TContext>, IDisposable {
 
+	/// 记录通道
 	private channels = new Map<string, IServerChannel<TContext>>();
+	/// 当前活跃的请求，请求完成后，将执行
 	private activeRequests = new Map<number, IDisposable>();
 	private protocolListener: IDisposable | null;
 
@@ -281,6 +299,7 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
 		this.sendBuffer(writer.buffer);
 	}
 
+	/// 最终由protocol发送消息
 	private sendBuffer(message: VSBuffer): void {
 		try {
 			this.protocol.send(message);
@@ -289,6 +308,8 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
 		}
 	}
 
+	/// 将消息分为四类
+	/// 承诺类、事件监听类、承诺取消类、事件抛掷类
 	private onRawMessage(message: VSBuffer): void {
 		const reader = new BufferReader(message);
 		const header = deserialize(reader);
@@ -307,6 +328,9 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
 		}
 	}
 
+	/// promise类消息的处理方式
+	/// 根据请求的channelName获得channel，由channel响应request（根据预警、请求名称、请求参数、取消令牌）
+	/// channel执行call得到结构，结果将发送响应（包括请求id、请求的结果数据data、响应类型为ResponseType.PromiseSuccess）
 	private onPromise(request: IRawPromiseRequest): void {
 		const channel = this.channels.get(request.channelName);
 		if (!channel) {
@@ -346,6 +370,9 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
 		this.activeRequests.set(request.id, disposable);
 	}
 
+	/// 事件监听类，根据请求的channelName获得channel，
+	/// 当服务端通道发送对应于request.name的状态变化时，将执行sendResponse
+	/// 告知对方request的id，请求的数据data，类型为ResponseType.EventFire
 	private onEventListen(request: IRawEventListenRequest): void {
 		const channel = this.channels.get(request.channelName);
 		if (!channel) {
@@ -378,6 +405,8 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
 	}
 }
 
+/// 通道客户端，能够访问通道集合。以通讯协议protocol构造
+/// getChannel根据channelName获得一个新创建的channel
 export class ChannelClient implements IChannelClient, IDisposable {
 
 	private state: State = State.Uninitialized;
@@ -389,17 +418,21 @@ export class ChannelClient implements IChannelClient, IDisposable {
 	private _onDidInitialize = new Emitter<void>();
 	readonly onDidInitialize = this._onDidInitialize.event;
 
+	/// 以通讯协议protocol构造，监听protocol的onMessgae消息
 	constructor(private protocol: IMessagePassingProtocol) {
 		this.protocolListener = this.protocol.onMessage(msg => this.onBuffer(msg));
 	}
 
+	/// 依据channelName新构造一个channel，能够call（调用命令），或listen（注册事件监听器）
 	getChannel<T extends IChannel>(channelName: string): T {
 		const that = this;
 
 		return {
+			/// 调用命令，通过protocol发送Promise类请求消息，包括通道名channelName、命令相关信息（command、arg、取消令牌）
 			call(command: string, arg?: any, cancellationToken?: CancellationToken) {
 				return that.requestPromise(channelName, command, arg, cancellationToken);
 			},
+			/// 监听事件，通过protocol发送事件监听类请求消息，包括通道名channelName、事件相关信息（event、arg）
 			listen(event: string, arg: any) {
 				return that.requestEvent(channelName, event, arg);
 			}
@@ -638,6 +671,7 @@ export class IPCServer<TContext = string> implements IChannelServer<TContext>, I
 		});
 	}
 
+	/// 获得通道，
 	getChannel<T extends IChannel>(channelName: string, router: IClientRouter<TContext>): T {
 		const that = this;
 
@@ -659,6 +693,7 @@ export class IPCServer<TContext = string> implements IChannelServer<TContext>, I
 		} as T;
 	}
 
+	/// 注册通道
 	registerChannel(channelName: string, channel: IServerChannel<TContext>): void {
 		this.channels.set(channelName, channel);
 	}

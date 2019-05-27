@@ -11,6 +11,7 @@ export interface Sender {
 	send(channel: string, msg: Buffer | null): void;
 }
 
+/// ipc通讯协议，
 export class Protocol implements IMessagePassingProtocol {
 
 	constructor(private sender: Sender, readonly onMessage: Event<VSBuffer>) { }
