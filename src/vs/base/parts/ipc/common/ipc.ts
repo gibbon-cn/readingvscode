@@ -631,8 +631,11 @@ interface Connection<TContext> extends Client<TContext> {
  * and the `IPCClient` classes to get IPC implementations
  * for your protocol.
  */
+/// IPCServer是通道服务器，也是路由通道客户端；需要扩展这个和IPCClient来，以获得对你的protocol的实现
 export class IPCServer<TContext = string> implements IChannelServer<TContext>, IRoutingChannelClient<TContext>, IConnectionHub<TContext>, IDisposable {
 
+	/// IPCServer能够对外提供的服务通道集合
+	/// 这些通道对于每个客户端连接，都要再次被注册
 	private channels = new Map<string, IServerChannel<TContext>>();
 	private _connections = new Set<Connection<TContext>>();
 
@@ -645,6 +648,12 @@ export class IPCServer<TContext = string> implements IChannelServer<TContext>, I
 		return result;
 	}
 
+	/// IPCServer的实现者，负责捕获客户端连接事件，事件对象包括负责与这个客户端通信的Protocol
+	/// IPCServer完成Server自身的构造
+	/// 通常理解，当Server接收到连接时，要做哪些工作？
+	/// Server要基于这个Protocol创建ChannelServer和ChannelClient
+	/// 创建的ChannelServer要注册所有channels
+	/// ChannelClient的作用是什么？
 	constructor(onDidClientConnect: Event<ClientConnectionEvent>) {
 		onDidClientConnect(({ protocol, onDidClientDisconnect }) => {
 			const onFirstMessage = Event.once(protocol.onMessage);
@@ -712,6 +721,7 @@ export class IPCServer<TContext = string> implements IChannelServer<TContext>, I
  * and the `IPCClient` classes to get IPC implementations
  * for your protocol.
  */
+///
 export class IPCClient<TContext = string> implements IChannelClient, IChannelServer<TContext>, IDisposable {
 
 	private channelClient: ChannelClient;

@@ -26,9 +26,15 @@ function createScopedOnMessageEvent(senderId: number, eventName: string): Event<
 
 export class Server extends IPCServer {
 
+	/// 根据Client连接的发送者WebContents的id记录已连接的Client
+	/// 只用于断开连接时的销毁动作
 	private static Clients = new Map<number, IDisposable>();
 
 	/// 产出Event<ClientConnectionEvent>，客户端连接事件
+	/// 这个事件的Emitter是谁？是ipcMain.omMessage("ipc:hello", theListner)
+	/// 当ipcMain接受到ipc:hello消息时，触发该事件，事件对象为 e.sender:Electron.WebContents <- BrowserWindow
+	/// https://electronjs.org/docs/api/ipc-main#eventsender
+	/// 在渲染进程执行 ipcRender.send(...)时，发送者实际为BrowserWindow.WebContents
 	private static getOnDidClientConnect(): Event<ClientConnectionEvent> {
 		/// 注册ipcMain接受到'ipc:hello'时响应的监听器
 		const onHello = Event.fromNodeEventEmitter<Electron.WebContents>(ipcMain, 'ipc:hello', ({ sender }) => sender);
