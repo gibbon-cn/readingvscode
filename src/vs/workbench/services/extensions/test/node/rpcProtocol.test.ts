@@ -13,6 +13,7 @@ import { VSBuffer } from 'vs/base/common/buffer';
 
 suite('RPCProtocol', () => {
 
+	/// 通信协议只需要完成send和onMessage的点对点通信
 	class MessagePassingProtocol implements IMessagePassingProtocol {
 		private _pair: MessagePassingProtocol;
 
@@ -39,18 +40,31 @@ suite('RPCProtocol', () => {
 	}
 
 	setup(() => {
+		/// 保证a_protocol和b_protocol相互通信
 		let a_protocol = new MessagePassingProtocol();
 		let b_protocol = new MessagePassingProtocol();
 		a_protocol.setPair(b_protocol);
 		b_protocol.setPair(a_protocol);
 
+		/// 基于相互通信的protocol创建RPCProtocol
 		let A = new RPCProtocol(a_protocol);
 		let B = new RPCProtocol(b_protocol);
 
+		/// B具有实例
 		const bIdentifier = new ProxyIdentifier<BClass>(false, 'bb');
 		const bInstance = new BClass();
 		B.set(bIdentifier, bInstance);
+
+		/// A和B共享Indentifier
 		bProxy = A.getProxy(bIdentifier);
+
+		/// 此后 bProxy.$m 将触发 bInstance.$m，前者将获得其结果
+		/*
+			bProxy.$m(...args).then((result)=> {
+				// result == bInstance.$m(...args);
+			})
+		*/
+		/// 如果MessagePassingProtocol是跨进程通信协议，A和B分别运行在不同的进程，则完成了RPC调用
 	});
 
 	test('simple call', function (done) {

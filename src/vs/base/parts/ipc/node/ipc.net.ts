@@ -13,6 +13,7 @@ import { IDisposable, Disposable } from 'vs/base/common/lifecycle';
 import { VSBuffer } from 'vs/base/common/buffer';
 import { ISocket, Protocol, Client, ChunkStream } from 'vs/base/parts/ipc/common/ipc.net';
 
+/// NodeSocket封装了NodeJS的net.Socket，对监听事件方法包装后返回可dispose对象
 export class NodeSocket implements ISocket {
 	public readonly socket: Socket;
 

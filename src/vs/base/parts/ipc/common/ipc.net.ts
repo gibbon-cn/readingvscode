@@ -343,6 +343,7 @@ class ProtocolWriter {
  *
  * Only Regular messages are counted, other messages are not counted, nor acknowledged.
  */
+/// 基于Socket的通讯协议
 export class Protocol extends Disposable implements IMessagePassingProtocol {
 
 	private _socket: ISocket;
@@ -355,6 +356,7 @@ export class Protocol extends Disposable implements IMessagePassingProtocol {
 	private _onClose = new Emitter<void>();
 	readonly onClose: Event<void> = this._onClose.event;
 
+	// 接受ISocket创建，通过Socket发消息，监听Socket的onData消息
 	constructor(socket: ISocket) {
 		super();
 		this._socket = socket;

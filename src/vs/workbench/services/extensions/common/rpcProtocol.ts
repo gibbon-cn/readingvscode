@@ -56,6 +56,7 @@ export interface IRPCProtocolLogger {
 
 const noop = () => { };
 
+/// RPC协议，对外提供Proxy，当Proxy执行$someMethod时，将转换为远程过程调用
 export class RPCProtocol extends Disposable implements IRPCProtocol {
 
 	private static UNRESPONSIVE_TIME = 3 * 1000; // 3s
@@ -78,6 +79,7 @@ export class RPCProtocol extends Disposable implements IRPCProtocol {
 	private _unresponsiveTime: number;
 	private _asyncCheckUresponsive: RunOnceScheduler;
 
+	/// 基于Protocol创建（将决定与哪个远程进程通信），基于Protocol发送消息和监听消息
 	constructor(protocol: IMessagePassingProtocol, logger: IRPCProtocolLogger | null = null, transformer: IURITransformer | null = null) {
 		super();
 		this._protocol = protocol;
@@ -192,6 +194,7 @@ export class RPCProtocol extends Disposable implements IRPCProtocol {
 		return new Proxy(Object.create(null), handler);
 	}
 
+	/// 设置本地实例，作为RPC的实际调用者
 	public set<T, R extends T>(identifier: ProxyIdentifier<T>, value: R): R {
 		this._locals[identifier.nid] = value;
 		return value;
